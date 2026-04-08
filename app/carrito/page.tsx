@@ -14,10 +14,10 @@ export default function CarritoPage() {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const confirmedSessionRef = useRef<string | null>(null);
 
-  const status = searchParams.get('status');
-  const sessionId = searchParams.get('session_id');
-
   useEffect(() => {
+    const status = searchParams.get('status');
+    const sessionId = searchParams.get('session_id');
+
     if (status !== 'success' || !sessionId) {
       return;
     }
@@ -28,9 +28,12 @@ export default function CarritoPage() {
 
     confirmedSessionRef.current = sessionId;
 
+    let cancelled = false;
+
     const confirmPayment = async () => {
       try {
         setConfirmingPayment(true);
+        setMensaje('Confirmando pago...');
 
         const response = await fetch('/api/checkout/confirm', {
           method: 'POST',
@@ -40,27 +43,40 @@ export default function CarritoPage() {
 
         const data = await response.json();
         if (!response.ok) {
-          confirmedSessionRef.current = null;
-          setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          if (!cancelled) {
+            confirmedSessionRef.current = null;
+            setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          }
           return;
         }
 
-        clearCart();
-        setMensaje(
-          data.duplicate
-            ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
-            : 'Pago confirmado y boletos descontados correctamente.'
-        );
+        if (!cancelled) {
+          clearCart();
+          setMensaje(
+            data.duplicate
+              ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
+              : 'Pago confirmado y boletos descontados correctamente.'
+          );
+        }
       } catch (error) {
-        confirmedSessionRef.current = null;
-        setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+        if (!cancelled) {
+          confirmedSessionRef.current = null;
+          setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+        }
       } finally {
-        setConfirmingPayment(false);
+        if (!cancelled) {
+          setConfirmingPayment(false);
+        }
       }
     };
 
     void confirmPayment();
-  }, [status, sessionId, clearCart]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, clearCart]);
+
 
   const paymentStatusMessage = useMemo(() => {
     if (status === 'success') return 'Pago completado con éxito.';
