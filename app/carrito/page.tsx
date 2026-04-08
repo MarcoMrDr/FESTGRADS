@@ -8,6 +8,7 @@ import { useAuth } from '@/components/AuthProvider';
 const CONFIRM_TIMEOUT_MS = 15000;
 
 export default function CarritoPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
@@ -84,6 +85,72 @@ export default function CarritoPage() {
       controller.abort();
     };
   }, [status, sessionId, clearCart]);
+
+  const confirmedSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const status = searchParams.get('status');
+    const sessionId = searchParams.get('session_id');
+
+    if (status !== 'success' || !sessionId) {
+      return;
+    }
+
+    if (confirmedSessionRef.current === sessionId) {
+      return;
+    }
+
+    confirmedSessionRef.current = sessionId;
+
+    let cancelled = false;
+
+    const confirmPayment = async () => {
+      try {
+        setConfirmingPayment(true);
+        setMensaje('Confirmando pago...');
+
+        const response = await fetch('/api/checkout/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          if (!cancelled) {
+            confirmedSessionRef.current = null;
+            setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          clearCart();
+          setMensaje(
+            data.duplicate
+              ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
+              : 'Pago confirmado y boletos descontados correctamente.'
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          confirmedSessionRef.current = null;
+          setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setConfirmingPayment(false);
+        }
+      }
+    };
+
+    void confirmPayment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, clearCart]);
+
 
   const paymentStatusMessage = useMemo(() => {
     if (status === 'success') return 'Pago completado con éxito.';

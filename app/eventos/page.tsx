@@ -7,6 +7,7 @@ import { useCart } from '@/components/CartProvider';
 import type { Evento } from '@/lib/types';
 
 const EVENTS_FETCH_TIMEOUT_MS = 20000;
+const EVENTS_FETCH_TIMEOUT_MS = 12000;
 
 export default function EventosPage() {
   const [eventos, setEventos] = useState<Evento[]>([]);
@@ -33,6 +34,16 @@ export default function EventosPage() {
         .select('id, titulo, descripcion, fecha, precio, limite_boletos')
         .order('fecha', { ascending: true })
         .abortSignal(controller.signal);
+      const fetchPromise = supabase
+        .from('eventos')
+        .select('id, titulo, descripcion, fecha, precio, limite_boletos')
+        .order('fecha', { ascending: true });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Tiempo de espera agotado al cargar eventos.')), EVENTS_FETCH_TIMEOUT_MS);
+      });
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (error) {
         setMensaje(`No se pudieron cargar eventos: ${error.message}`);
@@ -52,6 +63,8 @@ export default function EventosPage() {
       }
     } finally {
       clearTimeout(timeoutId);
+      setMensaje((error as Error).message);
+    } finally {
       setLoading(false);
     }
   };
