@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useCart } from '@/components/CartProvider';
 import { useAuth } from '@/components/AuthProvider';
@@ -11,13 +11,62 @@ export default function CarritoPage() {
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
   const [mensaje, setMensaje] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const confirmedSessionRef = useRef<string | null>(null);
+
+  const status = searchParams.get('status');
+  const sessionId = searchParams.get('session_id');
+
+  useEffect(() => {
+    if (status !== 'success' || !sessionId) {
+      return;
+    }
+
+    if (confirmedSessionRef.current === sessionId) {
+      return;
+    }
+
+    confirmedSessionRef.current = sessionId;
+
+    const confirmPayment = async () => {
+      try {
+        setConfirmingPayment(true);
+
+        const response = await fetch('/api/checkout/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          confirmedSessionRef.current = null;
+          setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          return;
+        }
+
+        clearCart();
+        setMensaje(
+          data.duplicate
+            ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
+            : 'Pago confirmado y boletos descontados correctamente.'
+        );
+      } catch (error) {
+        confirmedSessionRef.current = null;
+        setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+      } finally {
+        setConfirmingPayment(false);
+      }
+    };
+
+    void confirmPayment();
+  }, [status, sessionId, clearCart]);
 
   const paymentStatusMessage = useMemo(() => {
-    const status = searchParams.get('status');
     if (status === 'success') return 'Pago completado con éxito.';
     if (status === 'cancel') return 'Pago cancelado.';
     return '';
-  }, [searchParams]);
+  }, [status]);
 
   const checkout = async () => {
     if (!user) {
@@ -59,6 +108,7 @@ export default function CarritoPage() {
       <h2>Carrito de compra</h2>
       {!user && <p className="warning">Inicia sesión para completar la compra.</p>}
       {paymentStatusMessage && <p>{paymentStatusMessage}</p>}
+      {confirmingPayment && <p>Confirmando pago...</p>}
       {items.length === 0 ? (
         <p>No hay productos en el carrito.</p>
       ) : (
@@ -87,8 +137,8 @@ export default function CarritoPage() {
           </ul>
           <p className="total">Total: ${totalPrice.toFixed(2)}</p>
           <div className="cart-actions">
-            <button type="button" onClick={checkout} disabled={loading || !user}>
-              {loading ? 'Redirigiendo...' : 'Pagar con Stripe'}
+            <button type="button" onClick={checkout} disabled={loading || confirmingPayment || !user}>
+              {loading ? 'Redirigiendo...' : confirmingPayment ? 'Confirmando pago...' : 'Pagar con Stripe'}
             </button>
             <button type="button" onClick={clearCart} className="secondary">
               Vaciar carrito
