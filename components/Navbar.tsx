@@ -7,7 +7,8 @@ import { useAuth } from '@/components/AuthProvider';
 
 const defaultLinks = [
   { href: '/', label: 'Inicio' },
-  { href: '/eventos', label: 'Visualizar eventos' }
+  { href: '/eventos', label: 'Visualizar eventos' },
+  { href: '/extras', label: 'Productos extras' }
 ];
 
 const adminLinks = [{ href: '/registro-eventos', label: 'Registro de eventos' }];
