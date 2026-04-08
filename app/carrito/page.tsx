@@ -79,11 +79,10 @@ export default function CarritoPage() {
 
 
   const paymentStatusMessage = useMemo(() => {
-    const status = searchParams.get('status');
     if (status === 'success') return 'Pago completado con éxito.';
     if (status === 'cancel') return 'Pago cancelado.';
     return '';
-  }, [searchParams]);
+  }, [status]);
 
   const checkout = async () => {
     if (!user) {
@@ -125,6 +124,7 @@ export default function CarritoPage() {
       <h2>Carrito de compra</h2>
       {!user && <p className="warning">Inicia sesión para completar la compra.</p>}
       {paymentStatusMessage && <p>{paymentStatusMessage}</p>}
+      {confirmingPayment && <p>Confirmando pago...</p>}
       {items.length === 0 ? (
         <p>No hay productos en el carrito.</p>
       ) : (
