@@ -1,16 +1,18 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { useCart } from '@/components/CartProvider';
-import { MANUAL_EXTRAS } from '@/lib/manualProducts';
-import type { Evento, ExtraProducto } from '@/lib/types';
+import type { Evento } from '@/lib/types';
+
+const EVENTS_FETCH_TIMEOUT_MS = 20000;
 
 export default function EventosPage() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [mensaje, setMensaje] = useState('');
   const [loading, setLoading] = useState(true);
-  const { addEventTicketToCart, addExtraToCart } = useCart();
+  const { addEventTicketToCart } = useCart();
 
   const fetchEventos = async () => {
     if (!supabase) {
@@ -19,31 +21,43 @@ export default function EventosPage() {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EVENTS_FETCH_TIMEOUT_MS);
+
     setLoading(true);
     setMensaje('');
 
-    const { data, error } = await supabase
-      .from('eventos')
-      .select('id, titulo, descripcion, fecha, precio, limite_boletos')
-      .order('fecha', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('eventos')
+        .select('id, titulo, descripcion, fecha, precio, limite_boletos')
+        .order('fecha', { ascending: true })
+        .abortSignal(controller.signal);
 
-    if (error) {
-      setMensaje(`No se pudieron cargar eventos: ${error.message}`);
+      if (error) {
+        setMensaje(`No se pudieron cargar eventos: ${error.message}`);
+        return;
+      }
+
+      const rows = (data as Evento[]) ?? [];
+      setEventos(rows);
+      if (rows.length === 0) {
+        setMensaje('No hay eventos registrados.');
+      }
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        setMensaje('La carga tardó demasiado. Intenta nuevamente con Recargar eventos.');
+      } else {
+        setMensaje((error as Error).message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
-      return;
     }
-
-    const rows = (data as Evento[]) ?? [];
-    setEventos(rows);
-    if (rows.length === 0) {
-      setMensaje('No hay eventos registrados.');
-    }
-
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchEventos();
+    void fetchEventos();
   }, []);
 
   const onAddTicket = (evento: Evento) => {
@@ -53,11 +67,6 @@ export default function EventosPage() {
     }
 
     const result = addEventTicketToCart(evento, 1);
-    setMensaje(result);
-  };
-
-  const onAddExtra = (extra: ExtraProducto) => {
-    const result = addExtraToCart(extra, 1);
     setMensaje(result);
   };
 
@@ -91,22 +100,9 @@ export default function EventosPage() {
         </ul>
       )}
 
-      <h3 style={{ marginTop: '2rem' }}>Productos extras</h3>
-      <p>
-        Estos productos se agregan manualmente en <code>lib/manualProducts.ts</code>.
+      <p style={{ marginTop: '1.5rem' }}>
+        ¿Buscas consumibles y paquetes? <Link href="/extras">Ver productos extras</Link>.
       </p>
-      <ul className="event-list">
-        {MANUAL_EXTRAS.map((extra) => (
-          <li key={extra.id}>
-            <h3>{extra.nombre}</h3>
-            <p>Precio: ${extra.precio.toFixed(2)}</p>
-            <p>Disponibles: {extra.stock}</p>
-            <button type="button" onClick={() => onAddExtra(extra)}>
-              Agregar al carrito
-            </button>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

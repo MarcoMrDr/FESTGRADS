@@ -1,23 +1,96 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCart } from '@/components/CartProvider';
 import { useAuth } from '@/components/AuthProvider';
 
+const CONFIRM_TIMEOUT_MS = 15000;
+
 export default function CarritoPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
   const [mensaje, setMensaje] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const confirmingSessionRef = useRef<string | null>(null);
+
+  const status = searchParams.get('status');
+  const sessionId = searchParams.get('session_id');
+
+  useEffect(() => {
+    if (status !== 'success' || !sessionId) {
+      return;
+    }
+
+    const confirmedKey = `checkout-confirmed-${sessionId}`;
+    if (sessionStorage.getItem(confirmedKey) === '1') {
+      return;
+    }
+
+    if (confirmingSessionRef.current === sessionId) {
+      return;
+    }
+
+    confirmingSessionRef.current = sessionId;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIRM_TIMEOUT_MS);
+
+    const confirmPayment = async () => {
+      try {
+        setConfirmingPayment(true);
+
+        const response = await fetch('/api/checkout/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+          signal: controller.signal
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          return;
+        }
+
+        sessionStorage.setItem(confirmedKey, '1');
+        clearCart();
+        setMensaje(
+          data.duplicate
+            ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
+            : 'Pago confirmado y boletos descontados correctamente.'
+        );
+
+        router.replace('/carrito?status=success');
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          setMensaje('La confirmación tardó demasiado. Intenta recargar el carrito.');
+          return;
+        }
+
+        setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+      } finally {
+        clearTimeout(timeoutId);
+        confirmingSessionRef.current = null;
+        setConfirmingPayment(false);
+      }
+    };
+
+    void confirmPayment();
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [status, sessionId, clearCart, router]);
 
   const paymentStatusMessage = useMemo(() => {
-    const status = searchParams.get('status');
     if (status === 'success') return 'Pago completado con éxito.';
     if (status === 'cancel') return 'Pago cancelado.';
     return '';
-  }, [searchParams]);
+  }, [status]);
 
   const checkout = async () => {
     if (!user) {
@@ -59,6 +132,7 @@ export default function CarritoPage() {
       <h2>Carrito de compra</h2>
       {!user && <p className="warning">Inicia sesión para completar la compra.</p>}
       {paymentStatusMessage && <p>{paymentStatusMessage}</p>}
+      {confirmingPayment && <p>Confirmando pago...</p>}
       {items.length === 0 ? (
         <p>No hay productos en el carrito.</p>
       ) : (
@@ -87,8 +161,8 @@ export default function CarritoPage() {
           </ul>
           <p className="total">Total: ${totalPrice.toFixed(2)}</p>
           <div className="cart-actions">
-            <button type="button" onClick={checkout} disabled={loading || !user}>
-              {loading ? 'Redirigiendo...' : 'Pagar con Stripe'}
+            <button type="button" onClick={checkout} disabled={loading || confirmingPayment || !user}>
+              {loading ? 'Redirigiendo...' : confirmingPayment ? 'Confirmando pago...' : 'Pagar con Stripe'}
             </button>
             <button type="button" onClick={clearCart} className="secondary">
               Vaciar carrito
