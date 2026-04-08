@@ -15,6 +15,77 @@ export default function CarritoPage() {
   const [mensaje, setMensaje] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const confirmingSessionRef = useRef<string | null>(null);
+
+  const status = searchParams.get('status');
+  const sessionId = searchParams.get('session_id');
+
+  useEffect(() => {
+    if (status !== 'success' || !sessionId) {
+      return;
+    }
+
+    const confirmedKey = `checkout-confirmed-${sessionId}`;
+    if (sessionStorage.getItem(confirmedKey) === '1') {
+      return;
+    }
+
+    if (confirmingSessionRef.current === sessionId) {
+      return;
+    }
+
+    confirmingSessionRef.current = sessionId;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIRM_TIMEOUT_MS);
+
+    const confirmPayment = async () => {
+      try {
+        setConfirmingPayment(true);
+
+        const response = await fetch('/api/checkout/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+          signal: controller.signal
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          setMensaje(data.error ?? 'El pago se realizó pero no pudimos confirmar los boletos.');
+          return;
+        }
+
+        sessionStorage.setItem(confirmedKey, '1');
+        clearCart();
+        setMensaje(
+          data.duplicate
+            ? 'Pago confirmado. Esta compra ya estaba registrada anteriormente.'
+            : 'Pago confirmado y boletos descontados correctamente.'
+        );
+
+        window.history.replaceState(null, '', '/carrito?status=success');
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          setMensaje('La confirmación tardó demasiado. Intenta recargar el carrito.');
+          return;
+        }
+
+        setMensaje(`No se pudo confirmar el pago: ${(error as Error).message}`);
+      } finally {
+        clearTimeout(timeoutId);
+        confirmingSessionRef.current = null;
+        setConfirmingPayment(false);
+      }
+    };
+
+    void confirmPayment();
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [status, sessionId, clearCart]);
+
   const confirmedSessionRef = useRef<string | null>(null);
 
   useEffect(() => {

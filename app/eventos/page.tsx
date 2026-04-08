@@ -6,6 +6,7 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { useCart } from '@/components/CartProvider';
 import type { Evento } from '@/lib/types';
 
+const EVENTS_FETCH_TIMEOUT_MS = 20000;
 const EVENTS_FETCH_TIMEOUT_MS = 12000;
 
 export default function EventosPage() {
@@ -28,6 +29,11 @@ export default function EventosPage() {
     setMensaje('');
 
     try {
+      const { data, error } = await supabase
+        .from('eventos')
+        .select('id, titulo, descripcion, fecha, precio, limite_boletos')
+        .order('fecha', { ascending: true })
+        .abortSignal(controller.signal);
       const fetchPromise = supabase
         .from('eventos')
         .select('id, titulo, descripcion, fecha, precio, limite_boletos')
@@ -50,6 +56,13 @@ export default function EventosPage() {
         setMensaje('No hay eventos registrados.');
       }
     } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        setMensaje('La carga tardó demasiado. Intenta nuevamente con Recargar eventos.');
+      } else {
+        setMensaje((error as Error).message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
       setMensaje((error as Error).message);
     } finally {
       setLoading(false);
