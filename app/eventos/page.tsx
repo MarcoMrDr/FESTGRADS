@@ -21,6 +21,9 @@ export default function EventosPage() {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EVENTS_FETCH_TIMEOUT_MS);
+
     setLoading(true);
     setMensaje('');
 

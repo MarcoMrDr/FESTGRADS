@@ -5,7 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import { useCart } from '@/components/CartProvider';
 import { useAuth } from '@/components/AuthProvider';
 
+const CONFIRM_TIMEOUT_MS = 15000;
+
 export default function CarritoPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { items, totalPrice, updateQuantity, removeItem, clearCart } = useCart();
