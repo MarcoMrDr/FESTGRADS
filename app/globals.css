@@ -196,3 +196,41 @@ button {
   background: #1d4ed8;
   color: white;
 }
+
+
+body {
+  background-image: radial-gradient(circle at top, #eef2ff 0%, var(--bg) 45%);
+}
+
+.nav a {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav a:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+button {
+  transition: transform 0.12s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(29, 78, 216, 0.2);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
